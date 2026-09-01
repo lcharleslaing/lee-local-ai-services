@@ -15,24 +15,22 @@ Requires Node.js 20 or newer.
 ```ts
 import {
   createLocalAIManager,
-  defineLlamaCppService,
+  definePlannedLlamaCppService,
   defineWhisperService,
 } from '@leelaing/local-ai-services'
 
+const deep = await definePlannedLlamaCppService({
+  id: 'deep',
+  port: 8080,
+  model: '/home/lee/AI/Models/LLM/qwen.gguf',
+  contextSize: 8192,
+  gpuOffload: { mode: 'balanced' },
+  fallback: { enabled: true, maxRetries: 2 },
+})
+
 const ai = createLocalAIManager({
   services: [
-    defineLlamaCppService({
-      id: 'deep',
-      port: 8080,
-      model: '/home/lee/AI/Models/LLM/qwen.gguf',
-      gpuLayers: 999,
-      contextSize: 8192,
-    }),
-    defineLlamaCppService({
-      id: 'fast',
-      port: 8081,
-      model: '/home/lee/AI/Models/LLM/fast.gguf',
-    }),
+    deep,
     defineWhisperService({
       id: 'whisper',
       port: 8178,
@@ -48,6 +46,80 @@ await ai.stop('deep')
 ```
 
 Service types and provider names are intentionally extensible. Use `defineCustomAIService()` for any backend that does not yet have a built-in adapter.
+
+## Hardware-aware llama.cpp planning
+
+`definePlannedLlamaCppService()` reads current Linux system-memory availability, queries every NVIDIA GPU through `nvidia-smi`, safely inspects useful GGUF metadata, and calculates `-ngl` without assuming the entire model fits in VRAM.
+
+Available modes:
+
+- `auto`: choose a conservative safe split from current hardware and model data
+- `balanced`: substantial GPU acceleration with comfortable VRAM headroom
+- `max-gpu`: maximize GPU layers while retaining minimum runtime headroom
+- `cpu-heavy`: favor system RAM and use fewer GPU layers
+- `manual`: honor an explicit `gpuLayers` value
+
+The existing synchronous API remains available for manual/backward-compatible configuration:
+
+```ts
+import { defineLlamaCppService } from '@leelaing/local-ai-services'
+
+const manual = defineLlamaCppService({
+  id: 'manual',
+  model: '/models/model.gguf',
+  gpuLayers: 24,
+})
+```
+
+### Pre-flight planning
+
+```ts
+import { discoverLocalHardware, inspectGgufModel, planLlamaCppLaunch } from '@leelaing/local-ai-services'
+
+const hardware = await discoverLocalHardware()
+const model = await inspectGgufModel('/models/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf')
+
+const plan = await planLlamaCppLaunch({
+  model,
+  hardware,
+  contextSize: 8192,
+  gpuOffload: {
+    mode: 'balanced',
+    minimumVramHeadroomBytes: 2 * 1024 ** 3,
+  },
+})
+
+console.log({
+  runnable: plan.runnable,
+  gpuLayers: plan.recommendedGpuLayers,
+  gpuUse: plan.estimatedGpuUseBytes,
+  systemRamUse: plan.estimatedSystemRamUseBytes,
+  warnings: plan.warnings,
+  reason: plan.reason,
+})
+```
+
+The calculation reserves memory for estimated KV cache, CUDA/runtime buffers, configurable minimum VRAM headroom, and GGUF-to-runtime weight overhead. It uses current `memory.free` from `nvidia-smi` and Linux `MemAvailable`, not only installed-memory totals.
+
+### Bounded CUDA OOM fallback
+
+Fallback is opt-in and never loops indefinitely:
+
+```ts
+const service = await definePlannedLlamaCppService({
+  id: 'deep',
+  model: '/models/qwen.gguf',
+  gpuOffload: { mode: 'balanced' },
+  fallback: {
+    enabled: true,
+    maxRetries: 2,       // clamped to a maximum of two
+    reductionFactor: 0.75,
+    minimumGpuLayers: 0,
+  },
+})
+```
+
+Only recognized CUDA allocation/OOM failures trigger a retry. Each attempt, selected layer count, failure, and eventual fallback success is retained in service status and diagnostic reports.
 
 ## Generate and copy a diagnostic report
 
@@ -67,6 +139,8 @@ await ai.copyReportToClipboard(
 ```
 
 Environment variable names are shown in configuration reports, but their values are always hidden.
+
+For planned llama.cpp services, reports also include the requested mode, planned and actual GPU layers, exact detected VRAM and system RAM values, model size and architecture, estimated GPU/RAM split, reserved headroom, warnings, and all bounded fallback attempts.
 
 ## Discover models and executables
 

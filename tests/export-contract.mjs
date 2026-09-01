@@ -5,7 +5,9 @@ const required = [
   'LocalAIManager', 'OpenAICompatibleClient', 'copyReportToClipboard', 'createLocalAIManager',
   'createLocalAIReport', 'createOpenAICompatibleClient', 'defineCustomAIService',
   'defineLlamaCppService', 'defineWhisperService', 'discoverLocalAIServices', 'discoverModels',
-  'expandHome', 'findExecutable',
+  'definePlannedLlamaCppService', 'discoverLocalHardware', 'estimateLlamaCppKvCacheBytes',
+  'expandHome', 'findExecutable', 'inspectGgufModel', 'isCudaOutOfMemory',
+  'nextGpuLayersAfterCudaOom', 'parseNvidiaSmiCsv', 'parseProcMeminfo', 'planLlamaCppLaunch',
 ]
 const esm = await import('../dist/index.js')
 const cjs = createRequire(import.meta.url)('../dist/index.cjs')

@@ -36,6 +36,7 @@ export interface LocalAIServiceDefinition {
   pollIntervalMs?: number
   logLimit?: number
   metadata?: Record<string, unknown>
+  llamaCpp?: LlamaCppServiceDiagnostics
 }
 
 export type LocalAIServiceState = 'unknown' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
@@ -56,6 +57,102 @@ export interface LocalAIServiceStatus {
   exitCode: number | null
   startedAt: Date | null
   stoppedAt: Date | null
+  llamaCpp?: LlamaCppServiceDiagnostics
+}
+
+export type GpuOffloadMode = 'auto' | 'balanced' | 'max-gpu' | 'cpu-heavy' | 'manual'
+
+export interface GpuHardwareInfo {
+  index: number
+  name: string
+  backend: 'nvidia-cuda' | (string & {})
+  totalVramBytes: number
+  availableVramBytes: number | null
+  driverVersion?: string
+}
+
+export interface LocalHardwareInfo {
+  systemRamTotalBytes: number | null
+  systemRamAvailableBytes: number | null
+  gpus: GpuHardwareInfo[]
+  gpuCount: number
+  discoveredAt: Date
+  warnings: string[]
+}
+
+export interface GgufModelInfo {
+  path: string
+  sizeBytes: number
+  format: 'gguf'
+  ggufVersion?: number
+  tensorCount?: number
+  metadataCount?: number
+  architecture?: string
+  name?: string
+  layerCount?: number
+  contextLength?: number
+  metadata: Record<string, string | number | boolean>
+  warnings: string[]
+}
+
+export interface GpuOffloadOptions {
+  mode?: GpuOffloadMode
+  gpuLayers?: number
+  gpuIndex?: number
+  minimumVramHeadroomBytes?: number
+  runtimeOverheadBytes?: number
+  kvCacheBytes?: number
+  safetyMargin?: number
+}
+
+export interface LlamaCppFallbackOptions {
+  enabled?: boolean
+  maxRetries?: number
+  reductionFactor?: number
+  minimumGpuLayers?: number
+}
+
+export interface LlamaCppLaunchPlan {
+  mode: GpuOffloadMode
+  runnable: boolean
+  model: GgufModelInfo
+  hardware: LocalHardwareInfo
+  gpu: GpuHardwareInfo | null
+  contextSize: number
+  totalLayers: number | null
+  recommendedGpuLayers: number
+  fullGpuOffload: boolean
+  usesSystemRam: boolean
+  estimatedGpuUseBytes: number
+  estimatedSystemRamUseBytes: number
+  estimatedKvCacheBytes: number
+  estimatedWeightBytes: number
+  weightSafetyMargin: number
+  runtimeOverheadBytes: number
+  minimumVramHeadroomBytes: number
+  reservedHeadroomBytes: number
+  availableGpuBudgetBytes: number
+  estimatedCombinedUseBytes: number
+  warnings: string[]
+  reason: string
+}
+
+export interface LlamaCppLaunchAttempt {
+  attempt: number
+  gpuLayers: number
+  startedAt: Date
+  succeeded: boolean
+  cudaOutOfMemory: boolean
+  message: string
+}
+
+export interface LlamaCppServiceDiagnostics {
+  requestedMode: GpuOffloadMode
+  plannedGpuLayers: number
+  actualGpuLayers: number
+  launchPlan?: LlamaCppLaunchPlan
+  fallback?: Required<LlamaCppFallbackOptions>
+  launchAttempts: LlamaCppLaunchAttempt[]
 }
 
 export interface ExecutableInstallation {

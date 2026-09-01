@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events'
 import { createService, type ServiceManager, type ServiceState, type ServiceStatus } from '@leelaing/service-manager'
 import { OpenAICompatibleClient } from './client.js'
 import { copyReportToClipboard, createLocalAIReport } from './report.js'
+import { isCudaOutOfMemory, nextGpuLayersAfterCudaOom } from './llama-planner.js'
 import type { AICapability, ChatRequest, ChatResponse, ClipboardWriter, LocalAIManagerEvents, LocalAIManagerOptions, LocalAIReportOptions, LocalAIServiceDefinition, LocalAIServiceState, LocalAIServiceStatus } from './types.js'
 
 const stateMap: Record<ServiceState, LocalAIServiceState> = { stopped: 'stopped', starting: 'starting', running: 'running', stopping: 'stopping', failed: 'error' }
@@ -22,6 +23,13 @@ export class LocalAIManager extends EventEmitter<LocalAIManagerEvents> {
 
   register(definition: LocalAIServiceDefinition): this {
     if (this.#definitions.has(definition.id)) throw new Error(`Local AI service already registered: ${definition.id}`)
+    const service = this.#buildService(definition)
+    this.#definitions.set(definition.id, definition)
+    this.#services.set(definition.id, service)
+    return this
+  }
+
+  #buildService(definition: LocalAIServiceDefinition): ServiceManager {
     const host = definition.host ?? '127.0.0.1'
     const health = definition.healthCheck === false ? undefined : {
       url: definition.healthCheck?.url ?? `http://${host}:${definition.port}${definition.healthCheck?.path ?? '/health'}`,
@@ -39,9 +47,7 @@ export class LocalAIManager extends EventEmitter<LocalAIManagerEvents> {
     service.on('stdout', (text) => this.emit('service:log', definition.id, { stream: 'stdout', text, timestamp: new Date() }))
     service.on('stderr', (text) => this.emit('service:log', definition.id, { stream: 'stderr', text, timestamp: new Date() }))
     service.on('error', (error) => this.emit('service:error', definition.id, error))
-    this.#definitions.set(definition.id, definition)
-    this.#services.set(definition.id, service)
-    return this
+    return service
   }
 
   unregister(id: string): boolean {
@@ -55,12 +61,42 @@ export class LocalAIManager extends EventEmitter<LocalAIManagerEvents> {
   #service(id: string): ServiceManager { const value = this.#services.get(id); if (!value) throw new Error(`Unknown local AI service: ${id}`); return value }
   #normalize(id: string, status: ServiceStatus): LocalAIServiceStatus {
     const definition = this.definition(id)
-    return { id, name: definition.name ?? id, type: definition.type, provider: definition.provider, state: stateMap[status.state], running: status.running, healthy: status.healthy, portOpen: status.portOpen, host: definition.host ?? '127.0.0.1', port: definition.port, pid: status.pid, model: definition.model, exitCode: status.exitCode, startedAt: status.startedAt, stoppedAt: status.stoppedAt }
+    return { id, name: definition.name ?? id, type: definition.type, provider: definition.provider, state: stateMap[status.state], running: status.running, healthy: status.healthy, portOpen: status.portOpen, host: definition.host ?? '127.0.0.1', port: definition.port, pid: status.pid, model: definition.model, exitCode: status.exitCode, startedAt: status.startedAt, stoppedAt: status.stoppedAt, llamaCpp: definition.llamaCpp }
   }
 
-  async start(id: string): Promise<LocalAIServiceStatus> { const result = this.#normalize(id, await this.#service(id).start()); this.emit('service:start', result); if (result.healthy !== false) this.emit('service:ready', result); return result }
+  async start(id: string): Promise<LocalAIServiceStatus> {
+    const definition = this.definition(id)
+    const diagnostics = definition.llamaCpp
+    const fallback = diagnostics?.fallback
+    let retry = 0
+    while (true) {
+      const service = this.#service(id)
+      const startedAt = new Date()
+      try {
+        const result = this.#normalize(id, await service.start())
+        diagnostics?.launchAttempts.push({ attempt: diagnostics.launchAttempts.length + 1, gpuLayers: diagnostics.actualGpuLayers, startedAt, succeeded: true, cudaOutOfMemory: false, message: retry ? `Startup succeeded after ${retry} GPU-layer fallback ${retry === 1 ? 'retry' : 'retries'}.` : 'Startup succeeded.' })
+        this.emit('service:start', result)
+        if (result.healthy !== false) this.emit('service:ready', result)
+        return result
+      } catch (error) {
+        const logText = service.logs.map((entry) => entry.text).join('\n')
+        const oom = isCudaOutOfMemory(logText) || isCudaOutOfMemory(error instanceof Error ? error.message : String(error))
+        diagnostics?.launchAttempts.push({ attempt: diagnostics.launchAttempts.length + 1, gpuLayers: diagnostics.actualGpuLayers, startedAt, succeeded: false, cudaOutOfMemory: oom, message: oom ? `CUDA out of memory at ${diagnostics.actualGpuLayers} GPU layers.` : (error instanceof Error ? error.message : String(error)) })
+        if (!diagnostics || !fallback?.enabled || !oom || retry >= fallback.maxRetries) throw error
+        const nextLayers = nextGpuLayersAfterCudaOom(diagnostics.actualGpuLayers, fallback)
+        if (nextLayers >= diagnostics.actualGpuLayers) throw error
+        retry += 1
+        diagnostics.actualGpuLayers = nextLayers
+        const args = definition.command.args ?? []
+        const flagIndex = args.findIndex((argument) => argument === '-ngl' || argument === '--n-gpu-layers')
+        if (flagIndex >= 0) args[flagIndex + 1] = String(nextLayers)
+        else args.push('-ngl', String(nextLayers))
+        this.#services.set(id, this.#buildService(definition))
+      }
+    }
+  }
   async stop(id: string): Promise<LocalAIServiceStatus> { const result = this.#normalize(id, await this.#service(id).stop()); this.emit('service:stop', result); return result }
-  async restart(id: string): Promise<LocalAIServiceStatus> { const result = this.#normalize(id, await this.#service(id).restart()); this.emit('service:start', result); if (result.healthy !== false) this.emit('service:ready', result); return result }
+  async restart(id: string): Promise<LocalAIServiceStatus> { await this.stop(id); return this.start(id) }
   async status(id: string): Promise<LocalAIServiceStatus> { return this.#normalize(id, await this.#service(id).status()) }
   async statusAll(): Promise<Record<string, LocalAIServiceStatus>> { const entries = await Promise.all(this.ids.map(async (id) => [id, await this.status(id)] as const)); return Object.fromEntries(entries) }
   findByCapability(capability: AICapability): LocalAIServiceDefinition[] { return this.definitions.filter((definition) => definition.capabilities?.includes(capability)) }
