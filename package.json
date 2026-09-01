@@ -1,0 +1,53 @@
+{
+  "name": "@leelaing/local-ai-services",
+  "version": "0.1.0",
+  "description": "Discover, configure, manage, inspect, and communicate with local AI services.",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "start": "tsup --watch",
+    "dev": "npm start",
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:exports",
+    "test:exports": "node tests/export-contract.mjs",
+    "clean": "rm -rf dist coverage",
+    "prepublishOnly": "npm run check"
+  },
+  "engines": {"node": ">=20"},
+  "keywords": ["local-ai", "llama.cpp", "whisper", "ai-services", "service-manager", "typescript"],
+  "author": "Lee Charles Laing",
+  "license": "MIT",
+  "repository": {"type": "git", "url": "git+https://github.com/lcharleslaing/lee-local-ai-services.git"},
+  "bugs": {"url": "https://github.com/lcharleslaing/lee-local-ai-services/issues"},
+  "homepage": "https://github.com/lcharleslaing/lee-local-ai-services#readme",
+  "sideEffects": false,
+  "publishConfig": {"access": "public"},
+  "dependencies": {"@leelaing/service-manager": "^0.1.0"},
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^20.19.43",
+    "eslint": "^10.0.0",
+    "globals": "^17.0.0",
+    "prettier": "^3.6.2",
+    "tsup": "^8.5.0",
+    "typescript": "^6.0.0",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^4.1.0"
+  }
+}
