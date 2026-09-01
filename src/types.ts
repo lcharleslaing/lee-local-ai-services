@@ -26,7 +26,7 @@ export interface LocalAIServiceDefinition {
   provider: LocalAIProvider
   host?: string
   port: number
-  command: LocalAICommand
+  command?: LocalAICommand
   model?: string
   modelDirectory?: string
   capabilities?: AICapability[]
@@ -37,6 +37,12 @@ export interface LocalAIServiceDefinition {
   logLimit?: number
   metadata?: Record<string, unknown>
   llamaCpp?: LlamaCppServiceDiagnostics
+  whisper?: WhisperServiceDiagnostics
+  managed?: boolean
+  external?: boolean
+  connectable?: boolean
+  startable?: boolean
+  executable?: string | null
 }
 
 export type LocalAIServiceState = 'unknown' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
@@ -58,6 +64,81 @@ export interface LocalAIServiceStatus {
   startedAt: Date | null
   stoppedAt: Date | null
   llamaCpp?: LlamaCppServiceDiagnostics
+  whisper?: WhisperServiceDiagnostics
+  connectable?: boolean
+  startable?: boolean
+  managed?: boolean
+  external?: boolean
+  executable?: string | null
+}
+
+export type WhisperDiscoverySource = 'path' | 'known-path' | 'filesystem-search' | 'not-found'
+
+export interface WhisperExecutableDiscovery {
+  provider: 'whisper.cpp'
+  executable: string | null
+  available: boolean
+  discoverySource: WhisperDiscoverySource
+  searchedPaths: string[]
+  warnings: string[]
+}
+
+export interface WhisperModelInfo {
+  path: string
+  filename: string
+  modelName: string
+  sizeBytes: number
+}
+
+export interface WhisperModelDiscovery {
+  models: WhisperModelInfo[]
+  selectedModel: WhisperModelInfo | null
+  searchedRoots: string[]
+  warnings: string[]
+}
+
+export interface WhisperEndpointProbe {
+  host: string
+  port: number
+  running: boolean
+  healthy: boolean
+  compatible: boolean
+  healthEndpoint: string | null
+  inferenceEndpoint: string | null
+  responseStatuses: Record<string, number | null>
+  warning?: string
+}
+
+export interface WhisperServiceResolution {
+  provider: 'whisper.cpp'
+  host: string
+  port: number
+  running: boolean
+  healthy: boolean
+  connectable: boolean
+  startable: boolean
+  managed: boolean
+  external: boolean
+  executable: string | null
+  model: string | null
+  executableDiscovery: WhisperExecutableDiscovery
+  modelDiscovery: WhisperModelDiscovery
+  probes: WhisperEndpointProbe[]
+  warnings: string[]
+  message: string
+}
+
+export interface WhisperServiceDiagnostics {
+  connectable: boolean
+  startable: boolean
+  managed: boolean
+  external: boolean
+  executable: string | null
+  model: string | null
+  executableSearchPaths: string[]
+  modelSearchRoots: string[]
+  warnings: string[]
+  message: string
 }
 
 export type GpuOffloadMode = 'auto' | 'balanced' | 'max-gpu' | 'cpu-heavy' | 'manual'
@@ -157,8 +238,10 @@ export interface LlamaCppServiceDiagnostics {
 
 export interface ExecutableInstallation {
   provider: LocalAIProvider
-  executable: string
+  executable: string | null
   available: boolean
+  discoverySource?: string
+  searchedPaths?: string[]
 }
 
 export type ModelType = ExtensibleString<'llm' | 'whisper' | 'image' | 'embedding' | 'unknown'>

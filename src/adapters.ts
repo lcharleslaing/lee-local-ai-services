@@ -1,5 +1,6 @@
 import { normalizeLlamaCppFallback, planLlamaCppLaunch, type PlanLlamaCppLaunchOptions } from './llama-planner.js'
-import type { GgufModelInfo, GpuOffloadOptions, LlamaCppFallbackOptions, LocalAIServiceDefinition } from './types.js'
+import { resolveWhisperService, type ResolveWhisperServiceOptions } from './whisper.js'
+import type { GgufModelInfo, GpuOffloadOptions, LlamaCppFallbackOptions, LocalAIServiceDefinition, WhisperServiceResolution } from './types.js'
 
 export interface LlamaCppServiceOptions {
   id: string
@@ -85,7 +86,7 @@ export async function definePlannedLlamaCppService(options: PlannedLlamaCppServi
 export interface WhisperServiceOptions {
   id: string
   name?: string
-  model: string
+  model?: string
   executable?: string
   provider?: 'whisper.cpp' | 'faster-whisper' | (string & {})
   host?: string
@@ -94,11 +95,27 @@ export interface WhisperServiceOptions {
   cwd?: string
   env?: NodeJS.ProcessEnv
   healthPath?: string
+  managed?: boolean
+  external?: boolean
+  connectable?: boolean
+  startable?: boolean
+  resolution?: WhisperServiceResolution
 }
 
 export function defineWhisperService(options: WhisperServiceOptions): LocalAIServiceDefinition {
   const host = options.host ?? '127.0.0.1'
   const port = options.port ?? 8178
+  const external = options.external ?? false
+  const managed = options.managed ?? !external
+  const executable = options.executable ?? (managed ? 'whisper-server' : null)
+  const startable = options.startable ?? (managed && executable !== null && options.model !== undefined)
+  const command = managed && startable && executable && options.model ? {
+    command: executable,
+    args: ['--model', options.model, '--host', host, '--port', String(port), ...(options.args ?? [])],
+    cwd: options.cwd,
+    env: options.env,
+  } : undefined
+  const resolution = options.resolution
   return {
     id: options.id,
     name: options.name,
@@ -108,14 +125,69 @@ export function defineWhisperService(options: WhisperServiceOptions): LocalAISer
     port,
     model: options.model,
     capabilities: ['transcription'],
-    command: {
-      command: options.executable ?? 'whisper-server',
-      args: ['--model', options.model, '--host', host, '--port', String(port), ...(options.args ?? [])],
-      cwd: options.cwd,
-      env: options.env,
-    },
+    command,
     healthCheck: { path: options.healthPath ?? '/health' },
+    managed,
+    external,
+    connectable: options.connectable ?? false,
+    startable,
+    executable,
+    whisper: {
+      connectable: options.connectable ?? false,
+      startable,
+      managed,
+      external,
+      executable,
+      model: options.model ?? null,
+      executableSearchPaths: resolution?.executableDiscovery.searchedPaths ?? [],
+      modelSearchRoots: resolution?.modelDiscovery.searchedRoots ?? [],
+      warnings: resolution?.warnings ?? [],
+      message: resolution?.message ?? (external ? `External Whisper service configured on ${host}:${port}.` : 'Whisper service configured.'),
+    },
   }
+}
+
+export interface DefineResolvedWhisperServiceOptions {
+  id: string
+  resolution: WhisperServiceResolution
+  name?: string
+  args?: string[]
+  cwd?: string
+  env?: NodeJS.ProcessEnv
+}
+
+export function defineResolvedWhisperService(options: DefineResolvedWhisperServiceOptions): LocalAIServiceDefinition {
+  const { resolution } = options
+  return defineWhisperService({
+    id: options.id,
+    name: options.name,
+    host: resolution.host,
+    port: resolution.port,
+    executable: resolution.executable ?? undefined,
+    model: resolution.model ?? undefined,
+    managed: resolution.managed,
+    external: resolution.external,
+    connectable: resolution.connectable,
+    startable: resolution.startable,
+    args: options.args,
+    cwd: options.cwd,
+    env: options.env,
+    resolution,
+  })
+}
+
+export interface ResolveAndDefineWhisperServiceOptions extends ResolveWhisperServiceOptions {
+  id: string
+  name?: string
+  args?: string[]
+  cwd?: string
+  env?: NodeJS.ProcessEnv
+}
+
+export async function resolveAndDefineWhisperService(options: ResolveAndDefineWhisperServiceOptions): Promise<{ resolution: WhisperServiceResolution; service: LocalAIServiceDefinition }> {
+  const { id, name, args, cwd, env, ...resolveOptions } = options
+  const resolution = await resolveWhisperService(resolveOptions)
+  return { resolution, service: defineResolvedWhisperService({ id, name, args, cwd, env, resolution }) }
 }
 
 export interface CustomAIServiceOptions extends Omit<LocalAIServiceDefinition, 'provider' | 'type'> {

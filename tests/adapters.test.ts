@@ -6,7 +6,7 @@ describe('service adapters', () => {
     const service = defineLlamaCppService({ id: 'deep', model: '/models/qwen.gguf', port: 8080, gpuLayers: 999, contextSize: 8192 })
     expect(service.provider).toBe('llama.cpp')
     expect(service.capabilities).toContain('chat')
-    expect(service.command.args).toEqual(['/models/qwen.gguf'].flatMap((model) => ['-m', model, '--host', '127.0.0.1', '--port', '8080', '-ngl', '999', '-c', '8192']))
+    expect(service.command?.args).toEqual(['/models/qwen.gguf'].flatMap((model) => ['-m', model, '--host', '127.0.0.1', '--port', '8080', '-ngl', '999', '-c', '8192']))
   })
 
   it('uses Lee\'s established Whisper default port', () => {
@@ -24,9 +24,9 @@ describe('service adapters', () => {
     const model: GgufModelInfo = { path: '/models/qwen.gguf', sizeBytes: 17.4 * GIB, format: 'gguf', layerCount: 48, metadata: {}, warnings: [] }
     const hardware: LocalHardwareInfo = { systemRamTotalBytes: 32 * GIB, systemRamAvailableBytes: 30 * GIB, gpus: [{ index: 0, name: 'GPU', backend: 'nvidia-cuda', totalVramBytes: 12 * GIB, availableVramBytes: 11.5 * GIB }], gpuCount: 1, discoveredAt: new Date(), warnings: [] }
     const service = await definePlannedLlamaCppService({ id: 'deep', model: model.path, contextSize: 8192, gpuOffload: { mode: 'balanced' }, planning: { modelInfo: model, hardware } })
-    const nglIndex = service.command.args?.indexOf('-ngl') ?? -1
+    const nglIndex = service.command?.args?.indexOf('-ngl') ?? -1
     expect(nglIndex).toBeGreaterThan(-1)
-    expect(Number(service.command.args?.[nglIndex + 1])).toBe(service.llamaCpp?.plannedGpuLayers)
+    expect(Number(service.command?.args?.[nglIndex + 1])).toBe(service.llamaCpp?.plannedGpuLayers)
     expect(service.llamaCpp?.requestedMode).toBe('balanced')
   })
 })

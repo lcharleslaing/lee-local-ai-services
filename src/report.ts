@@ -11,7 +11,7 @@ export interface CreateLocalAIReportInput {
   installations?: ExecutableInstallation[]
 }
 
-function yesNo(value: boolean | null): string { return value === null ? 'unknown' : value ? 'yes' : 'no' }
+function yesNo(value: boolean | null | undefined): string { return value === null || value === undefined ? 'unknown' : value ? 'yes' : 'no' }
 function safeEnvironment(env?: NodeJS.ProcessEnv): string[] { return Object.keys(env ?? {}).sort() }
 function formatBytes(value: number | null): string { return value === null ? 'unknown' : `${(value / 1024 ** 3).toFixed(2)} GiB (${value} bytes)` }
 
@@ -23,12 +23,16 @@ export function createLocalAIReport(input: CreateLocalAIReportInput): string {
     `Services:  ${input.statuses.length}`,
   ]
   for (const status of input.statuses) {
-    lines.push('', `[${status.id}] ${status.name}`, `Provider:  ${status.provider}`, `Type:      ${status.type}`, `State:     ${status.state}`, `Running:   ${yesNo(status.running)}`, `Healthy:   ${yesNo(status.healthy)}`, `Port open: ${yesNo(status.portOpen)}`, `Address:   http://${status.host}:${status.port}`, `PID:       ${status.pid ?? 'none'}`, `Model:     ${status.model ?? 'none'}`)
+    lines.push('', `[${status.id}] ${status.name}`, `Provider:    ${status.provider}`, `Type:        ${status.type}`, `State:       ${status.state}`, `Running:     ${yesNo(status.running)}`, `Healthy:     ${yesNo(status.healthy)}`, `Connectable: ${yesNo(status.connectable)}`, `Startable:   ${yesNo(status.startable)}`, `Managed:     ${yesNo(status.managed)}`, `External:    ${yesNo(status.external)}`, `Port open:   ${yesNo(status.portOpen)}`, `Address:     http://${status.host}:${status.port}`, `PID:         ${status.pid ?? 'none'}`, `Executable:  ${status.executable ?? 'none'}`, `Model:       ${status.model ?? 'none'}`)
     const definition = input.definitions?.find((item) => item.id === status.id)
-    if (definition) {
+    if (definition?.command) {
       lines.push(`Command:   ${definition.command.command} ${(definition.command.args ?? []).join(' ')}`.trimEnd())
       const environmentKeys = safeEnvironment(definition.command.env)
       if (environmentKeys.length) lines.push(`Env keys:  ${environmentKeys.join(', ')} (values hidden)`)
+    }
+    if (status.whisper) {
+      lines.push('Whisper discovery:', `  ${status.whisper.message}`, `  Executable search paths: ${status.whisper.executableSearchPaths.length ? status.whisper.executableSearchPaths.join(', ') : 'none recorded'}`, `  Model search roots: ${status.whisper.modelSearchRoots.length ? status.whisper.modelSearchRoots.join(', ') : 'none recorded'}`)
+      for (const warning of status.whisper.warnings) lines.push(`  Warning: ${warning}`)
     }
     if (status.llamaCpp) {
       const diagnostics = status.llamaCpp

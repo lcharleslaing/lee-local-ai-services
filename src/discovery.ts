@@ -32,6 +32,12 @@ export interface ExecutableSearch {
 export async function discoverLocalAIServices(searches: ExecutableSearch[] = defaultExecutableSearches): Promise<ExecutableInstallation[]> {
   const installations: ExecutableInstallation[] = []
   for (const search of searches) {
+    if (search.provider === 'whisper.cpp') {
+      const { discoverWhisperExecutable } = await import('./whisper.js')
+      const discovery = await discoverWhisperExecutable({ executableNames: search.executableNames, additionalPaths: search.paths })
+      installations.push({ provider: search.provider, executable: discovery.executable, available: discovery.available, discoverySource: discovery.discoverySource, searchedPaths: discovery.searchedPaths })
+      continue
+    }
     let found: string | null = null
     for (const name of search.executableNames) {
       found = await findExecutable(name, search.paths)
@@ -44,7 +50,17 @@ export async function discoverLocalAIServices(searches: ExecutableSearch[] = def
 
 export const defaultExecutableSearches: ExecutableSearch[] = [
   { provider: 'llama.cpp', executableNames: ['llama-server', 'server'], paths: ['~/AI/llama.cpp/build/bin/llama-server'] },
-  { provider: 'whisper.cpp', executableNames: ['whisper-server'], paths: ['~/AI/whisper.cpp/build/bin/whisper-server'] },
+  {
+    provider: 'whisper.cpp',
+    executableNames: ['whisper-server', 'whisper-whisper-server'],
+    paths: [
+      '~/AI/whisper.cpp/build/bin/whisper-server', '~/AI/whisper.cpp/build/bin/whisper-whisper-server',
+      '~/whisper.cpp/build/bin/whisper-server', '~/whisper.cpp/build/bin/whisper-whisper-server',
+      '~/.local/bin/whisper-server', '~/.local/bin/whisper-whisper-server',
+      '/usr/local/bin/whisper-server', '/usr/local/bin/whisper-whisper-server',
+      '/usr/bin/whisper-server', '/usr/bin/whisper-whisper-server',
+    ],
+  },
   { provider: 'ollama', executableNames: ['ollama'] },
 ]
 

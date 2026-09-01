@@ -47,6 +47,83 @@ await ai.stop('deep')
 
 Service types and provider names are intentionally extensible. Use `defineCustomAIService()` for any backend that does not yet have a built-in adapter.
 
+## Resolve a usable local Whisper service
+
+Applications do not need to know where whisper.cpp was cloned or which application installed it. Resolution first probes compatible running HTTP services, then performs bounded executable and model discovery only as needed.
+
+```ts
+import {
+  createLocalAIManager,
+  resolveAndDefineWhisperService,
+} from '@leelaing/local-ai-services'
+
+const { resolution, service } = await resolveAndDefineWhisperService({
+  id: 'whisper',
+  host: '127.0.0.1',
+  preferredPort: 8178,
+  candidatePorts: [8091],
+})
+
+const ai = createLocalAIManager({ services: [service] })
+
+if (resolution.connectable) {
+  const transcript = await ai.transcribe({
+    service: 'whisper',
+    file: '/path/recording.wav',
+  })
+  console.log(transcript)
+} else if (resolution.startable) {
+  await ai.start('whisper')
+}
+```
+
+Resolution distinguishes these states explicitly:
+
+- `connectable: true`: a compatible Whisper HTTP service is already running; no executable is required
+- `startable: true`: a real Whisper server executable and model were discovered and can be lifecycle-managed
+- both false: neither a compatible running service nor a startable installation was found
+
+### External unmanaged Whisper
+
+A discovered running service is represented without a command:
+
+```ts
+import { defineWhisperService } from '@leelaing/local-ai-services'
+
+const external = defineWhisperService({
+  id: 'external-whisper',
+  host: '127.0.0.1',
+  port: 8178,
+  external: true,
+  managed: false,
+  connectable: true,
+})
+```
+
+`LocalAIManager` can check and use this endpoint, but `stop()` and `restart()` never terminate or signal an external process that the manager did not launch.
+
+### Whisper discovery details
+
+```ts
+import {
+  discoverWhisperExecutable,
+  discoverWhisperModels,
+  probeWhisperService,
+  resolveWhisperService,
+} from '@leelaing/local-ai-services'
+
+const executable = await discoverWhisperExecutable()
+const models = await discoverWhisperModels()
+const endpoint = await probeWhisperService({ port: 8178 })
+const resolved = await resolveWhisperService({ preferredPort: 8178 })
+```
+
+Executable discovery checks `PATH`, known binary locations, and bounded searches beneath common AI, programming, service, and application roots. It reports every direct path or bounded root searched and stops at configured depth/directory limits.
+
+Model discovery recognizes real `ggml-tiny*`, `ggml-base*`, `ggml-small*`, `ggml-medium*`, and `ggml-large*` `.bin` files. Obvious fixtures/test models and files below the minimum realistic size are ignored. Default roots include `~/AI/Models/Whisper`, `~/AI/Models`, `~/AI/whisper.cpp/models`, and `~/whisper.cpp/models`.
+
+Endpoint probing requires whisper.cpp's healthy `/health` response and a compatible POST-only `/inference` route. An unrelated HTTP service is not accepted merely because its port is open. Executable discovery recognizes both `whisper-server` and the alternate `whisper-whisper-server` name.
+
 ## Hardware-aware llama.cpp planning
 
 `definePlannedLlamaCppService()` reads current Linux system-memory availability, queries every NVIDIA GPU through `nvidia-smi`, safely inspects useful GGUF metadata, and calculates `-ngl` without assuming the entire model fits in VRAM.

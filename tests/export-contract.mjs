@@ -8,6 +8,9 @@ const required = [
   'definePlannedLlamaCppService', 'discoverLocalHardware', 'estimateLlamaCppKvCacheBytes',
   'expandHome', 'findExecutable', 'inspectGgufModel', 'isCudaOutOfMemory',
   'nextGpuLayersAfterCudaOom', 'parseNvidiaSmiCsv', 'parseProcMeminfo', 'planLlamaCppLaunch',
+  'WhisperClient', 'createWhisperClient', 'defineResolvedWhisperService',
+  'discoverWhisperExecutable', 'discoverWhisperModels', 'isRealWhisperModelFilename',
+  'probeWhisperService', 'resolveAndDefineWhisperService', 'resolveWhisperService',
 ]
 const esm = await import('../dist/index.js')
 const cjs = createRequire(import.meta.url)('../dist/index.cjs')
