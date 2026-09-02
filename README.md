@@ -124,6 +124,40 @@ Model discovery recognizes real `ggml-tiny*`, `ggml-base*`, `ggml-small*`, `ggml
 
 Endpoint probing requires whisper.cpp's healthy `/health` response and a compatible POST-only `/inference` route. An unrelated HTTP service is not accepted merely because its port is open. Executable discovery recognizes both `whisper-server` and the alternate `whisper-whisper-server` name.
 
+### Music Whisper path-based service
+
+Music Whisper is a separate trusted-local protocol. It accepts absolute filesystem paths in JSON and must not be confused with whisper.cpp's multipart `/inference` endpoint.
+
+```ts
+import {
+  createLocalAIManager,
+  defineMusicWhisperService,
+} from '@leelaing/local-ai-services'
+
+const ai = createLocalAIManager({
+  services: [defineMusicWhisperService({
+    id: 'music-whisper',
+    baseUrl: 'http://127.0.0.1:8091',
+    endpoint: '/transcribe',
+    healthEndpoint: '/health',
+  })],
+})
+
+const result = await ai.transcribe({
+  service: 'music-whisper',
+  inputPath: '/absolute/path/normalized.wav',
+  outputDirectory: '/absolute/path/to/job-output',
+})
+
+console.log(result.text, result.segments, result.warnings)
+```
+
+The manager returns the same normalized result shape for whisper.cpp and Music Whisper. Music Whisper accepts `text`, `transcript`, `transcription`, or common segment arrays, and can fall back to a generated `.txt` file inside only the caller-supplied output directory. Multiple outputs are selected deterministically and reported in `warnings`.
+
+Path-based transport is intended only for a trusted service on the same machine. The package never invents repository-relative runtime paths, deletes caller files, or stops an external service.
+
+Custom transcription protocols can supply a `TranscriptionAdapter` through a service definition without modifying `LocalAIManager`.
+
 ## Hardware-aware llama.cpp planning
 
 `definePlannedLlamaCppService()` reads current Linux system-memory availability, queries every NVIDIA GPU through `nvidia-smi`, safely inspects useful GGUF metadata, and calculates `-ngl` without assuming the entire model fits in VRAM.

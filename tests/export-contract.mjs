@@ -11,6 +11,9 @@ const required = [
   'WhisperClient', 'createWhisperClient', 'defineResolvedWhisperService',
   'discoverWhisperExecutable', 'discoverWhisperModels', 'isRealWhisperModelFilename',
   'probeWhisperService', 'resolveAndDefineWhisperService', 'resolveWhisperService',
+  'MusicWhisperClient', 'MusicWhisperError', 'WhisperCppTranscriptionAdapter',
+  'createMusicWhisperClient', 'createWhisperCppTranscriptionAdapter',
+  'defineMusicWhisperService', 'normalizeTranscriptionResponse',
 ]
 const esm = await import('../dist/index.js')
 const cjs = createRequire(import.meta.url)('../dist/index.cjs')

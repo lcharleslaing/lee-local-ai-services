@@ -1,5 +1,6 @@
 import { normalizeLlamaCppFallback, planLlamaCppLaunch, type PlanLlamaCppLaunchOptions } from './llama-planner.js'
 import { resolveWhisperService, type ResolveWhisperServiceOptions } from './whisper.js'
+import { MusicWhisperClient, WhisperCppTranscriptionAdapter, type MusicWhisperClientOptions, type TranscriptionAdapter } from './transcription.js'
 import type { GgufModelInfo, GpuOffloadOptions, LlamaCppFallbackOptions, LocalAIServiceDefinition, WhisperServiceResolution } from './types.js'
 
 export interface LlamaCppServiceOptions {
@@ -100,6 +101,7 @@ export interface WhisperServiceOptions {
   connectable?: boolean
   startable?: boolean
   resolution?: WhisperServiceResolution
+  transcriptionAdapter?: TranscriptionAdapter
 }
 
 export function defineWhisperService(options: WhisperServiceOptions): LocalAIServiceDefinition {
@@ -132,6 +134,7 @@ export function defineWhisperService(options: WhisperServiceOptions): LocalAISer
     connectable: options.connectable ?? false,
     startable,
     executable,
+    transcriptionAdapter: options.transcriptionAdapter ?? new WhisperCppTranscriptionAdapter({ clientOptions: { host, port } }),
     whisper: {
       connectable: options.connectable ?? false,
       startable,
@@ -144,6 +147,45 @@ export function defineWhisperService(options: WhisperServiceOptions): LocalAISer
       warnings: resolution?.warnings ?? [],
       message: resolution?.message ?? (external ? `External Whisper service configured on ${host}:${port}.` : 'Whisper service configured.'),
     },
+  }
+}
+
+export interface MusicWhisperServiceOptions extends MusicWhisperClientOptions {
+  id: string
+  name?: string
+  host?: string
+  port?: number
+  external?: boolean
+  connectable?: boolean
+  adapter?: TranscriptionAdapter
+}
+
+export function defineMusicWhisperService(options: MusicWhisperServiceOptions): LocalAIServiceDefinition {
+  const host = options.host ?? '127.0.0.1'
+  const port = options.port ?? 8091
+  const baseUrl = options.baseUrl ?? `http://${host}:${port}`
+  const adapter = options.adapter ?? new MusicWhisperClient({
+    baseUrl,
+    endpoint: options.endpoint,
+    healthEndpoint: options.healthEndpoint,
+    fetch: options.fetch,
+    timeoutMs: options.timeoutMs,
+  })
+  return {
+    id: options.id,
+    name: options.name,
+    type: 'transcription',
+    provider: 'music-whisper',
+    host,
+    port,
+    capabilities: ['transcription'],
+    healthCheck: { path: options.healthEndpoint ?? '/health', timeoutMs: options.timeoutMs },
+    managed: false,
+    external: options.external ?? true,
+    connectable: options.connectable ?? false,
+    startable: false,
+    executable: null,
+    transcriptionAdapter: adapter,
   }
 }
 
