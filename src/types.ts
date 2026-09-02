@@ -1,4 +1,5 @@
 import type { ServiceLogEntry } from '@leelaing/service-manager'
+import type { TranscriptionAdapter } from './transcription.js'
 
 export type ExtensibleString<T extends string> = T | (string & {})
 export type LocalAIServiceType = ExtensibleString<'llm' | 'transcription' | 'image' | 'embedding' | 'audio' | 'custom'>
@@ -43,6 +44,7 @@ export interface LocalAIServiceDefinition {
   connectable?: boolean
   startable?: boolean
   executable?: string | null
+  transcriptionAdapter?: TranscriptionAdapter
 }
 
 export type LocalAIServiceState = 'unknown' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'

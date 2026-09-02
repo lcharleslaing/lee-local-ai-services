@@ -113,7 +113,9 @@ describe('Whisper discovery and resolution', () => {
     expect(report).toContain('Existing Whisper service discovered')
     await manager.stop('external-whisper')
     expect(server.listening).toBe(true)
-    await expect(manager.transcribe({ service: 'external-whisper', file: new Uint8Array([1, 2, 3]), filename: 'voice.wav' })).resolves.toEqual({ text: 'spoken words' })
+    await expect(manager.transcribe({ service: 'external-whisper', file: new Uint8Array([1, 2, 3]), filename: 'voice.wav' })).resolves.toMatchObject({
+      text: 'spoken words', provider: 'whisper.cpp', protocol: 'whisper.cpp', warnings: [],
+    })
     expect(inferencePosts).toBe(1)
   })
 

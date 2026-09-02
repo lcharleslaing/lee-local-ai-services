@@ -3,7 +3,8 @@ import { checkHttpHealth, createService, isPortOpen, type ServiceManager, type S
 import { OpenAICompatibleClient } from './client.js'
 import { copyReportToClipboard, createLocalAIReport } from './report.js'
 import { isCudaOutOfMemory, nextGpuLayersAfterCudaOom } from './llama-planner.js'
-import { probeWhisperService, WhisperClient, type WhisperTranscriptionRequest } from './whisper.js'
+import { probeWhisperService, WhisperClient } from './whisper.js'
+import { WhisperCppTranscriptionAdapter, type NormalizedTranscriptionRequest, type NormalizedTranscriptionResult } from './transcription.js'
 import type { AICapability, ChatRequest, ChatResponse, ClipboardWriter, LocalAIManagerEvents, LocalAIManagerOptions, LocalAIReportOptions, LocalAIServiceDefinition, LocalAIServiceState, LocalAIServiceStatus } from './types.js'
 
 const stateMap: Record<ServiceState, LocalAIServiceState> = { stopped: 'stopped', starting: 'starting', running: 'running', stopping: 'stopping', failed: 'error' }
@@ -75,7 +76,12 @@ export class LocalAIManager extends EventEmitter<LocalAIManagerEvents> {
     let portOpen: boolean
     let healthy: boolean
     let connectable: boolean
-    if (definition.provider === 'whisper.cpp') {
+    if (definition.transcriptionAdapter?.probe) {
+      const probe = await definition.transcriptionAdapter.probe()
+      portOpen = probe.running
+      healthy = probe.healthy
+      connectable = probe.compatible
+    } else if (definition.provider === 'whisper.cpp') {
       const probe = await probeWhisperService({ host, port: definition.port, fetch: this.#fetch })
       portOpen = probe.running
       healthy = probe.healthy
@@ -150,7 +156,18 @@ export class LocalAIManager extends EventEmitter<LocalAIManagerEvents> {
   async chat(request: ChatRequest): Promise<ChatResponse> { const id = request.service ?? this.findByCapability('chat')[0]?.id; if (!id) throw new Error('No chat-capable local AI service is registered'); const { service: _service, ...clientRequest } = request; void _service; return this.client(id).chat({ ...clientRequest, model: request.model ?? this.definition(id).model }) }
   async rawRequest<T = unknown>(id: string, endpoint: string, init?: RequestInit): Promise<T> { return this.client(id).rawRequest<T>(endpoint, init) }
   whisperClient(id: string): WhisperClient { const definition = this.definition(id); if (definition.provider !== 'whisper.cpp') throw new Error(`Local AI service is not whisper.cpp: ${id}`); return new WhisperClient({ host: definition.host, port: definition.port, fetch: this.#fetch }) }
-  async transcribe(request: WhisperTranscriptionRequest & { service?: string }): Promise<unknown> { const id = request.service ?? this.findByCapability('transcription')[0]?.id; if (!id) throw new Error('No transcription-capable local AI service is registered'); const { service: _service, ...clientRequest } = request; void _service; return this.whisperClient(id).transcribe(clientRequest) }
+  async transcribe(request: NormalizedTranscriptionRequest & { service?: string }): Promise<NormalizedTranscriptionResult> {
+    const id = request.service ?? this.findByCapability('transcription')[0]?.id
+    if (!id) throw new Error('No transcription-capable local AI service is registered')
+    const definition = this.definition(id)
+    const adapter = definition.transcriptionAdapter ?? (definition.provider === 'whisper.cpp'
+      ? new WhisperCppTranscriptionAdapter({ client: this.whisperClient(id) })
+      : null)
+    if (!adapter) throw new Error(`No transcription adapter is configured for service: ${id}`)
+    const { service: _service, ...clientRequest } = request
+    void _service
+    return adapter.transcribe(clientRequest)
+  }
 
   async createReport(options: LocalAIReportOptions = {}): Promise<string> {
     const statuses = Object.values(await this.statusAll())
